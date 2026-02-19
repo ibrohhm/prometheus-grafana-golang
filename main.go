@@ -18,7 +18,7 @@ var (
 			Name: "http_requests_total",
 			Help: "Total number of HTTP requests",
 		},
-		[]string{"path", "method"},
+		[]string{"path", "method", "status"},
 	)
 
 	httpRequestDuration = promauto.NewHistogramVec(
@@ -52,9 +52,9 @@ func metricsMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		rw := &responseWriter{ResponseWriter: w, status: http.StatusOK}
 		start := time.Now()
-		httpRequestsTotal.WithLabelValues(r.URL.Path, r.Method).Inc()
 		next(rw, r)
 		status := strconv.Itoa(rw.status)
+		httpRequestsTotal.WithLabelValues(r.URL.Path, r.Method, status).Inc()
 		httpRequestDuration.WithLabelValues(r.URL.Path, r.Method, status).Observe(time.Since(start).Seconds())
 	}
 }
