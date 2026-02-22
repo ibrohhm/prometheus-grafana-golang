@@ -39,9 +39,7 @@ This will start three services:
 - Metrics endpoint: http://localhost:8080/metrics
 
 Available endpoints:
-- `GET /` - Home page
-- `GET /api/users` - Users endpoint
-- `GET /api/data` - Data endpoint
+- `POST /api/transactions` - Transaction endpoint
 - `GET /metrics` - Prometheus metrics
 
 ### Prometheus
@@ -67,25 +65,3 @@ Available endpoints:
    - Name: `Prometheus`
    - URL: `http://prometheus:9090`
 7. Click **Save & Test**
-
-### Step 2: Create Dashboard
-
-1. Click **+** (plus icon) > **Dashboard** > **Add new panel**
-2. In the query editor, you can use these metrics:
-
-#### Available Metrics:
-
-**HTTP Request Counter:**
-```promql
-rate(http_requests_total[1m])
-```
-
-**HTTP Request Duration:**
-```promql
-histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m]))
-```
-
-**Active Users:**
-```promql
-active_users
-```

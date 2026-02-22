@@ -7,12 +7,20 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/julienschmidt/httprouter"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 var (
+	activeUsers = promauto.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "active_users",
+			Help: "Number of active users",
+		},
+	)
+
 	httpRequestsTotal = promauto.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "http_requests_total",
@@ -21,77 +29,63 @@ var (
 		[]string{"path", "method", "status"},
 	)
 
-	httpRequestDuration = promauto.NewHistogramVec(
+	httpRequestTransactionDuration = promauto.NewHistogramVec(
 		prometheus.HistogramOpts{
-			Name:    "http_request_duration_seconds",
-			Help:    "HTTP request latency in seconds",
+			Name:    "http_request_transaction_duration_seconds",
+			Help:    "Transaction request duration in seconds",
 			Buckets: prometheus.DefBuckets,
 		},
-		[]string{"path", "method", "status"},
+		[]string{"path", "method", "status", "payment_type"},
 	)
 
-	activeUsers = promauto.NewGauge(
-		prometheus.GaugeOpts{
-			Name: "active_users",
-			Help: "Number of active users",
+	httpRequestTransactionWithCodeDuration = promauto.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "http_request_transaction_with_code_duration_seconds",
+			Help:    "Transaction request duration in seconds with code",
+			Buckets: prometheus.DefBuckets,
 		},
+		[]string{"path", "method", "status", "payment_type", "code"},
 	)
 )
 
-type responseWriter struct {
-	http.ResponseWriter
-	status int
-}
-
-func (rw *responseWriter) WriteHeader(code int) {
-	rw.status = code
-	rw.ResponseWriter.WriteHeader(code)
-}
-
-func metricsMiddleware(next http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		rw := &responseWriter{ResponseWriter: w, status: http.StatusOK}
-		start := time.Now()
-		next(rw, r)
-		status := strconv.Itoa(rw.status)
-		httpRequestsTotal.WithLabelValues(r.URL.Path, r.Method, status).Inc()
-		httpRequestDuration.WithLabelValues(r.URL.Path, r.Method, status).Observe(time.Since(start).Seconds())
-	}
-}
-
 func main() {
+	router := httprouter.New()
+
 	// Register HTTP handlers
-	http.HandleFunc("/", metricsMiddleware(handleHome))
-	http.HandleFunc("/api/users", metricsMiddleware(handleUsers))
-	http.HandleFunc("/api/data", metricsMiddleware(handleData))
-	http.Handle("/metrics", promhttp.Handler())
+	router.POST("/api/transactions", handleTransactionWithRouter)
+	router.Handler("GET", "/metrics", promhttp.Handler())
 
 	log.Println("Starting server on :8080")
 	log.Println("Metrics available at http://localhost:8080/metrics")
 
-	if err := http.ListenAndServe(":8080", nil); err != nil {
+	if err := http.ListenAndServe(":8080", router); err != nil {
 		log.Fatal(err)
 	}
 }
 
-func handleHome(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusOK)
-	activeUsers.Set(float64(50 + rand.Intn(50))) // Simulate active users changing
-	w.Write([]byte("Welcome to Prometheus Demo App!"))
-}
+func handleTransactionWithRouter(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+	start := time.Now()
 
-func handleUsers(w http.ResponseWriter, r *http.Request) {
+	transactionID := int64(rand.Intn(1000000))
+	code := "TRX-" + strconv.FormatInt(transactionID, 10)
+	randomStatus := TransactionStatusList[rand.Intn(len(TransactionStatusList))]
+	randomPaymentMethod := PaymentMethodList[rand.Intn(len(PaymentMethodList))]
+	duration := time.Duration(rand.Intn(1000000))
+
+	transaction := Transaction{
+		ID:          transactionID,
+		Code:        code,
+		Status:      randomStatus,
+		PaymentType: randomPaymentMethod,
+	}
+
 	// Simulate some processing time
-	time.Sleep(time.Duration(rand.Intn(100)) * time.Millisecond)
+	time.Sleep(duration * time.Microsecond)
 
+	httpRequestTransactionDuration.WithLabelValues("/api/transactions", "POST", string(randomStatus), string(randomPaymentMethod)).Observe(time.Since(start).Seconds())
+	httpRequestTransactionWithCodeDuration.WithLabelValues("/api/transactions", "POST", string(randomStatus), string(randomPaymentMethod), code).Observe(time.Since(start).Seconds())
+
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(`{"users": ["alice", "bob", "charlie"]}`))
-}
-
-func handleData(w http.ResponseWriter, r *http.Request) {
-	// Simulate some processing time
-	time.Sleep(time.Duration(rand.Intn(200)) * time.Millisecond)
-
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(`{"data": "sample data"}`))
+	w.Write([]byte(`{"id": ` + strconv.FormatInt(transaction.ID, 10) + `, "code": "` + transaction.Code + `", "status": "` + string(transaction.Status) + `", "payment_type": "` + string(transaction.PaymentType) + `"}`))
 }
