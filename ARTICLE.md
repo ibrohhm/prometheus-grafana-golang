@@ -99,7 +99,9 @@ This single unbounded label is enough to turn an otherwise manageable metric int
 
 ## Summary
 
-Adding labels whose values grow unbounded over time is strongly discouraged. Such labels rarely add meaningful value to the metric itself, and high-cardinality labels can lead to serious issues, including:
+Adding labels whose values grow unbounded over time—such as UUIDs, timestamps, user IDs, or transaction codes—is strongly discouraged. These labels rarely add meaningful value at the metrics level and introduce high cardinality. For high-cardinality data, better use logging, not metrics
+
+High-cardinality labels can lead to serious issues, including:
 - **Huge memory usage** — each unique label set creates a new time series
 - **Rapid disk growth**
 - **Slow queries**
